@@ -1,0 +1,76 @@
+---
+- name: Provision WSL Ubuntu 26.04 and Bootstrap SSH on Windows Host
+  hosts: windows
+  gather_facts: false
+
+  vars:
+    distro_name: "{{ wsl_distro | default('Ubuntu-26.04') }}"
+    ssh_port: "{{ wsl_ssh_port | default('2222') }}"
+    wsl_user: "aru"
+    ssh_public_key: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDa2vTe6TlGTnAI/8Uw8W6yPrvoe+NqPcY0M74ah4SgxuHDCo6eWrTLLM+pC0lmGA1MnDgS+dKA3JISPo81c5hFq8yIP7CMmyXloECf3U0D2ss2xRDqtNauqjHWTrYN6Q6iGaFLTahHzBl79dm41lNvhT2Urw6eBEJG/1h0E1Wj1cXm2WL7TVECkTtEFlC2XPD2dorAfJ7SoKRlGq6LH8BYp9fLTfSdCQMzxYgmiFFBIyMd+4/4w/FECtXP+H0yUlyEkbKKT6WyDpyXe+r6PM2mVy7Dt4WnLfHemDxzCRXNDh9vqh1BB0nvmSkxgkwy/p6GW6W8eKsxCYZG6iUHjxXrisay52xuerGrnhQtwGKyw+83ShLeHHi+1MabDHg6ZNKK9O3F4gtZ5CUwQqDvCk2JNQGqeCS8j24szFZ4AAf1dFIwIfHNhsQcRMojyBt1hXNUDTrfJcSv5nPiufukvWERRb23AwUmo4JoxutjR09TeIbPuxAq5943j3yqEOWznKQC2msNzX5ewAm2TXZt0kLGMdBFNwTa+q/S78QTQYOe+6Yv7+GM7ktLRNBEFIyfralfmrG6e2NFVN9+odQlX9d8j9Y8ZNU4lFkaVpQP+rGZxgRI6QGmhWeS6p1eo+vCAaMC6qV5MhVJ+dtJJQbJtDPB0MEq4BY5HbHh/cSetB7vYw== webtechy@gmail.com"
+
+  tasks:
+    - name: Verify WSL distro is installed
+      ansible.windows.win_shell: |
+        $distros = wsl.exe -l -q | ForEach-Object { $_.Trim() -replace "`0", "" }
+        if ($distros -notcontains "{{ distro_name }}") {
+          wsl.exe --install -d "{{ distro_name }}" --no-launch
+        }
+        wsl.exe --set-default "{{ distro_name }}"
+      register: wsl_install_result
+      changed_when: false
+
+    - name: Configure /etc/wsl.conf inside Ubuntu
+      ansible.windows.win_shell: |
+        $wslConf = @"
+        [boot]
+        systemd=true
+
+        [user]
+        default={{ wsl_user }}
+        "@
+        wsl.exe -u root -d "{{ distro_name }}" -e bash -c "cat << 'EOF' > /etc/wsl.conf
+        [boot]
+        systemd=true
+
+        [user]
+        default={{ wsl_user }}
+        EOF"
+
+    - name: Create default user and configure passwordless sudo
+      ansible.windows.win_shell: |
+        wsl.exe -u root -d "{{ distro_name }}" -e bash -c "
+        id -u {{ wsl_user }} &>/dev/null || useradd -m -s /bin/bash -G sudo {{ wsl_user }}
+        echo '{{ wsl_user }} ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/{{ wsl_user }}
+        chmod 0440 /etc/sudoers.d/{{ wsl_user }}
+        "
+
+    - name: Authorize SSH public key in Ubuntu
+      ansible.windows.win_shell: |
+        wsl.exe -u root -d "{{ distro_name }}" -e bash -c "
+        mkdir -p /home/{{ wsl_user }}/.ssh
+        echo '{{ ssh_public_key }}' > /home/{{ wsl_user }}/.ssh/authorized_keys
+        chown -R {{ wsl_user }}:{{ wsl_user }} /home/{{ wsl_user }}/.ssh
+        chmod 700 /home/{{ wsl_user }}/.ssh
+        chmod 600 /home/{{ wsl_user }}/.ssh/authorized_keys
+        "
+
+    - name: Install and configure OpenSSH server inside Ubuntu on custom port
+      ansible.windows.win_shell: |
+        wsl.exe -u root -d "{{ distro_name }}" -e bash -c "
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get update -qq
+        apt-get install -y -qq openssh-server python3 python3-apt curl ca-certificates
+        mkdir -p /etc/ssh/sshd_config.d
+        echo 'Port {{ ssh_port }}' > /etc/ssh/sshd_config.d/wsl.conf
+        echo 'PermitRootLogin prohibit-password' >> /etc/ssh/sshd_config.d/wsl.conf
+        echo 'PasswordAuthentication no' >> /etc/ssh/sshd_config.d/wsl.conf
+        systemctl enable ssh
+        systemctl restart ssh
+        "
+
+    - name: Register KeepWSLAlive Scheduled Task for Ubuntu 26.04
+      ansible.windows.win_shell: |
+        & "C:\Users\aru\windows-server\KeepWSLAlive.ps1" -Distro "{{ distro_name }}"
+      register: keep_wsl_alive_out
+      changed_when: false

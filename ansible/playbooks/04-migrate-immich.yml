@@ -1,0 +1,139 @@
+---
+- name: Deploy Immich and Restore Database on Ubuntu 26.04 WSL
+  hosts: wsl
+  become: true
+  gather_facts: false
+
+  vars:
+    immich_dir: "/opt/immich"
+    db_username: "casaos"
+    db_password: "casaos"
+    db_database: "immich"
+    photos_dir: "/mnt/d/ImmichPhotos"
+    backup_sql: "/mnt/d/immich_backup_dumpall.sql"
+    raw_pgdata_backup: "/mnt/d/immich_pgdata_raw"
+    immich_version: "v2.1.0"
+
+  tasks:
+    - name: Ensure target directories exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+      loop:
+        - "{{ immich_dir }}"
+        - "{{ immich_dir }}/model-cache"
+
+    - name: Verify photo library is mounted
+      ansible.builtin.stat:
+        path: "{{ photos_dir }}"
+      register: photos_stat
+      failed_when: not photos_stat.stat.exists or not photos_stat.stat.isdir
+
+    - name: Check if PGDATA already initialized in /opt/immich/pgdata
+      ansible.builtin.stat:
+        path: "{{ immich_dir }}/pgdata/PG_VERSION"
+      register: pgdata_stat
+
+    - name: Copy raw PGDATA from backup if not yet initialized
+      ansible.builtin.shell: |
+        mkdir -p {{ immich_dir }}/pgdata
+        cp -a {{ raw_pgdata_backup }}/. {{ immich_dir }}/pgdata/
+        rm -f {{ immich_dir }}/pgdata/postmaster.pid
+        chown -R 999:999 {{ immich_dir }}/pgdata
+        chmod 0700 {{ immich_dir }}/pgdata
+      when: not pgdata_stat.stat.exists
+
+    - name: Ensure proper permissions on PGDATA directory
+      ansible.builtin.file:
+        path: "{{ immich_dir }}/pgdata"
+        owner: "999"
+        group: "999"
+        mode: '0700'
+        recurse: false
+
+    - name: Create Immich docker-compose.yml
+      ansible.builtin.copy:
+        dest: "{{ immich_dir }}/docker-compose.yml"
+        mode: '0644'
+        content: |
+          name: immich
+          services:
+            immich-server:
+              container_name: immich-server
+              image: ghcr.io/immich-app/immich-server:{{ immich_version }}
+              volumes:
+                - {{ photos_dir }}:/usr/src/app/upload
+                - /etc/localtime:/etc/localtime:ro
+              env_file:
+                - .env
+              ports:
+                - "2283:2283"
+              depends_on:
+                database:
+                  condition: service_started
+                redis:
+                  condition: service_started
+              restart: always
+
+            immich-machine-learning:
+              container_name: immich-machine-learning
+              image: ghcr.io/immich-app/immich-machine-learning:{{ immich_version }}
+              volumes:
+                - {{ immich_dir }}/model-cache:/cache
+              env_file:
+                - .env
+              restart: always
+
+            redis:
+              container_name: immich-redis
+              image: redis:6.2.20-alpine
+              restart: always
+
+            database:
+              container_name: immich-postgres
+              image: ghcr.io/immich-app/postgres:14-vectorchord0.3.0-pgvectors0.2.0
+              environment:
+                POSTGRES_USER: {{ db_username }}
+                POSTGRES_PASSWORD: {{ db_password }}
+                POSTGRES_DB: {{ db_database }}
+                PG_DATA: /var/lib/postgresql/data
+              volumes:
+                - {{ immich_dir }}/pgdata:/var/lib/postgresql/data
+              restart: always
+
+    - name: Create Immich .env configuration
+      ansible.builtin.copy:
+        dest: "{{ immich_dir }}/.env"
+        mode: '0600'
+        content: |
+          UPLOAD_LOCATION={{ photos_dir }}
+          DB_HOSTNAME=database
+          DB_USERNAME={{ db_username }}
+          DB_PASSWORD={{ db_password }}
+          DB_DATABASE_NAME={{ db_database }}
+          DB_PORT=5432
+          REDIS_HOSTNAME=redis
+          IMMICH_MACHINE_LEARNING_URL=http://immich-machine-learning:3003
+
+    - name: Start Immich stack
+      ansible.builtin.command:
+        cmd: docker compose up -d
+        chdir: "{{ immich_dir }}"
+
+    - name: Wait for Immich Server HTTP endpoint to respond
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:2283/api/server/version"
+        status_code: 200
+      register: immich_health
+      until: immich_health.status == 200
+      retries: 30
+      delay: 3
+
+    - name: Immich Status
+      ansible.builtin.debug:
+        msg:
+          - "Immich is successfully running at http://{{ ansible_host }}:2283"
+          - "Version: {{ immich_health.json.major }}.{{ immich_health.json.minor }}.{{ immich_health.json.patch }}"

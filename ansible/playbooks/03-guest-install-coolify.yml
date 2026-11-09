@@ -1,0 +1,33 @@
+---
+- name: Install Coolify on Ubuntu 26.04 WSL
+  hosts: wsl
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Check if Coolify is already installed
+      ansible.builtin.stat:
+        path: /data/coolify/source/docker-compose.yml
+      register: coolify_stat
+
+    - name: Download and execute Coolify installation script
+      ansible.builtin.shell: |
+        curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash
+      when: not coolify_stat.stat.exists
+      register: coolify_install_output
+
+    - name: Wait for Coolify containers to become healthy
+      ansible.builtin.command: "docker ps --filter name=coolify --format '{{ '{{' }}.Names{{ '}}' }}: {{ '{{' }}.Status{{ '}}' }}'"
+      register: coolify_status
+      until: "'coolify' in coolify_status.stdout"
+      retries: 30
+      delay: 5
+      changed_when: false
+
+    - name: Display Coolify status
+      ansible.builtin.debug:
+        msg:
+          - "Coolify installed and running."
+          - "Coolify Dashboard URL: http://{{ ansible_host }}:8000"
+          - "Active Containers:"
+          - "{{ coolify_status.stdout_lines }}"

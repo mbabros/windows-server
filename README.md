@@ -52,11 +52,40 @@ Test it immediately by running:
 uptime
 ```
 
+### 3. Automated VM & Homelab Provisioning with Ansible
+
+This repository includes full Infrastructure as Code (IaC) playbooks to provision a clean Ubuntu 26.04 LTS instance under WSL2, configure Docker CE, install Coolify, and deploy Immich with data migration:
+
+```bash
+cd ansible
+
+# 1. Test connectivity
+ansible all -m ping
+
+# 2. Run end-to-end homelab provisioning
+ansible-playbook site.yml
+```
+
+Or execute individual playbooks:
+- `ansible-playbook playbooks/01-host-provision-wsl.yml`: Configures Windows host, installs Ubuntu 26.04, registers KeepWSLAlive task, bootstraps SSH on port 2222.
+- `ansible-playbook playbooks/02-guest-setup-docker.yml`: Installs official Docker CE and systemd services inside Ubuntu.
+- `ansible-playbook playbooks/03-guest-install-coolify.yml`: Installs Coolify dashboard and Traefik reverse proxy.
+- `ansible-playbook playbooks/04-migrate-immich.yml`: Restores Immich PostgreSQL database and starts Immich pointing to host photos on `/mnt/d/ImmichPhotos`.
+
 ---
 
 ## Repository Structure
 
 ```text
+├── ansible/
+│   ├── ansible.cfg            # Ansible CLI & SSH connection settings
+│   ├── inventory.ini          # Windows host (:22) and WSL guest (:2222) inventory
+│   ├── site.yml               # Master orchestration playbook
+│   └── playbooks/
+│       ├── 01-host-provision-wsl.yml    # Distro provisioning & SSH bootstrap
+│       ├── 02-guest-setup-docker.yml    # Docker CE installation
+│       ├── 03-guest-install-coolify.yml # Coolify deployment
+│       └── 04-migrate-immich.yml        # Immich database restore & compose stack
 ├── KeepWSLAlive.ps1           # Task Scheduler registration script
 ├── Install-UptimeProfile.ps1  # Installs uptime profile to all PowerShell versions
 ├── profile.ps1                # Standalone profile snippet with uptime function
