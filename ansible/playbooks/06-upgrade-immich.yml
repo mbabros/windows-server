@@ -1,0 +1,41 @@
+---
+- name: Upgrade Immich to Latest Release
+  hosts: wsl
+  become: true
+  gather_facts: false
+
+  vars:
+    immich_dir: "/opt/immich"
+
+  tasks:
+    - name: Pull latest Immich images
+      ansible.builtin.command:
+        cmd: docker compose pull
+        chdir: "{{ immich_dir }}"
+      register: pull_out
+
+    - name: Recreate and restart Immich containers with new images
+      ansible.builtin.command:
+        cmd: docker compose up -d
+        chdir: "{{ immich_dir }}"
+      register: restart_out
+
+    - name: Wait for upgraded Immich Server HTTP endpoint to respond
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:2283/api/server/version"
+        status_code: 200
+      register: immich_health
+      until: immich_health.status == 200
+      retries: 30
+      delay: 3
+
+    - name: Prune older unused container images
+      ansible.builtin.command:
+        cmd: docker image prune -f
+      changed_when: false
+
+    - name: Display upgraded Immich version
+      ansible.builtin.debug:
+        msg:
+          - "Immich successfully upgraded and operational at http://{{ ansible_host }}:2283"
+          - "Current Running Version: {{ immich_health.json.major }}.{{ immich_health.json.minor }}.{{ immich_health.json.patch }}"

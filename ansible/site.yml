@@ -1,13 +1,16 @@
 ---
-# Master Site Playbook for Windows Server WSL2 Homelab
+# Master Site Playbook for WSL Docker Homelab Server
 # 1. Provision Ubuntu 26.04 WSL instance and bootstrap SSH:2222 on Windows Host
 - import_playbook: playbooks/01-host-provision-wsl.yml
 
-# 2. Configure Ubuntu 26.04 guest and install latest Docker CE
+# 2. Configure Windows background service and custom uptime command
+- import_playbook: playbooks/05-windows-wsl-service-uptime.yml
+
+# 3. Configure Ubuntu 26.04 guest and install latest Docker CE
 - import_playbook: playbooks/02-guest-setup-docker.yml
 
-# 3. Install Coolify dashboard and Traefik reverse proxy
+# 4. Install Coolify dashboard and Traefik reverse proxy
 - import_playbook: playbooks/03-guest-install-coolify.yml
 
-# 4. Deploy Immich and restore database backup
+# 5. Deploy Immich (latest release) and restore database backup
 - import_playbook: playbooks/04-migrate-immich.yml

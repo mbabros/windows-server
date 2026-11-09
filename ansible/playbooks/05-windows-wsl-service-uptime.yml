@@ -1,0 +1,122 @@
+---
+- name: Configure Windows WSL Background Service and Uptime Command
+  hosts: windows
+  gather_facts: false
+
+  vars:
+    distro_name: "{{ wsl_distro | default('Ubuntu-26.04') }}"
+    task_name: "KeepWSLAlive"
+
+  tasks:
+    - name: Ensure .wslconfig is deployed in user profile
+      ansible.windows.win_shell: |
+        $wslconfigContent = @"
+        [wsl2]
+        vmIdleTimeout=-1
+        networkingMode=mirrored
+        dnsTunneling=true
+
+        [general]
+        instanceIdleTimeout=-1
+        "@
+        $dest = "$HOME\.wslconfig"
+        Set-Content -Path $dest -Value $wslconfigContent -Force
+      changed_when: false
+
+    - name: Register KeepWSLAlive Scheduled Task to keep WSL VM running continuously
+      ansible.windows.win_shell: |
+        $ErrorActionPreference = "Stop"
+
+        $action = New-ScheduledTaskAction `
+            -Execute "wsl.exe" `
+            -Argument "-d {{ distro_name }} -u root --exec sleep infinity"
+
+        $trigger = New-ScheduledTaskTrigger -AtStartup
+
+        $settings = New-ScheduledTaskSettingsSet `
+            -AllowStartIfOnBatteries `
+            -DontStopIfGoingOnBatteries `
+            -DontStopOnIdleEnd `
+            -ExecutionTimeLimit (New-TimeSpan -Days 0) `
+            -MultipleInstances IgnoreNew
+
+        $principal = New-ScheduledTaskPrincipal `
+            -UserId (whoami) `
+            -LogonType S4U
+
+        Register-ScheduledTask `
+            -TaskName "{{ task_name }}" `
+            -Action $action `
+            -Trigger $trigger `
+            -Settings $settings `
+            -Principal $principal `
+            -Description "Runs at startup to ensure the {{ distro_name }} WSL instance stays running permanently as a background service." `
+            -Force | Out-Null
+
+        Stop-ScheduledTask -TaskName "{{ task_name }}" -ErrorAction SilentlyContinue
+        Start-ScheduledTask -TaskName "{{ task_name }}" -ErrorAction SilentlyContinue
+
+        Get-ScheduledTask -TaskName "{{ task_name }}" | Select-Object TaskName, State
+      register: task_status
+      changed_when: true
+
+    - name: Deploy custom uptime function to all PowerShell profiles
+      ansible.windows.win_shell: |
+        $ErrorActionPreference = "Stop"
+
+        $profileSnippet = @'
+        # --- Custom Uptime Function ---
+        function uptime {
+            [CmdletBinding()]
+            param(
+                [switch]$Since
+            )
+
+            $boot = (Get-CimInstance -ClassName Win32_OperatingSystem).LastBootUpTime
+            if ($Since) {
+                return $boot
+            }
+
+            $span = (Get-Date) - $boot
+            "System Uptime: $($span.Days) days, $($span.Hours) hours, $($span.Minutes) mins, $($span.Seconds) secs (Boot: $($boot.ToString('yyyy-MM-dd HH:mm:ss')))"
+        }
+        # ------------------------------
+        '@
+
+        $directories = @(
+            (Join-Path $HOME "Documents\PowerShell"),
+            (Join-Path $HOME "Documents\WindowsPowerShell")
+        )
+
+        foreach ($dir in $directories) {
+            if (-not (Test-Path $dir)) {
+                New-Item -ItemType Directory -Path $dir -Force | Out-Null
+            }
+
+            $allHosts = Join-Path $dir "profile.ps1"
+            $currentHost = Join-Path $dir "Microsoft.PowerShell_profile.ps1"
+
+            Set-Content -Path $allHosts -Value $profileSnippet -Force
+            Set-Content -Path $currentHost -Value $profileSnippet -Force
+        }
+
+        try {
+            Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force -ErrorAction SilentlyContinue
+        } catch {}
+
+        # Test the uptime function immediately
+        $profilePath = Join-Path $HOME "Documents\PowerShell\profile.ps1"
+        if (Test-Path $profilePath) {
+            . $profilePath
+            uptime
+        } else {
+            "Profile created successfully"
+        }
+      register: uptime_test
+      changed_when: true
+
+    - name: Display status of Windows WSL service and uptime test
+      ansible.builtin.debug:
+        msg:
+          - "Scheduled Task: {{ task_name }} is registered for {{ distro_name }}."
+          - "{{ uptime_test.stdout_lines }}"

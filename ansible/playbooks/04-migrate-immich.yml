@@ -12,7 +12,7 @@
     photos_dir: "/mnt/d/ImmichPhotos"
     backup_sql: "/mnt/d/immich_backup_dumpall.sql"
     raw_pgdata_backup: "/mnt/d/immich_pgdata_raw"
-    immich_version: "v2.1.0"
+    immich_version: "{{ immich_image_version | default('release') }}"
 
   tasks:
     - name: Ensure target directories exist
@@ -117,6 +117,11 @@
           DB_PORT=5432
           REDIS_HOSTNAME=redis
           IMMICH_MACHINE_LEARNING_URL=http://immich-machine-learning:3003
+
+    - name: Pull latest Immich container images
+      ansible.builtin.command:
+        cmd: docker compose pull
+        chdir: "{{ immich_dir }}"
 
     - name: Start Immich stack
       ansible.builtin.command:
