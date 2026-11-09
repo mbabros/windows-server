@@ -66,6 +66,8 @@
               image: ghcr.io/immich-app/immich-server:{{ immich_version }}
               volumes:
                 - {{ photos_dir }}:/usr/src/app/upload
+                - /mnt/d/PhotoSync:/usr/src/app/external/photosync:ro
+                - /mnt/d/kphong/Photos:/usr/src/app/external/kphong:ro
                 - /etc/localtime:/etc/localtime:ro
               env_file:
                 - .env

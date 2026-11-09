@@ -2,6 +2,8 @@
 
 A complete Infrastructure as Code (IaC) and automation suite for running persistent Docker workloads, Coolify, and Immich on Windows via WSL2 (Ubuntu 26.04 LTS), with native background service management and server telemetry.
 
+> **Architecture Documentation**: See [**`docs/ARCHITECTURE.md`**](docs/ARCHITECTURE.md) for comprehensive component flowcharts, mirrored networking sequences, dual-tier storage strategy, and port allocation maps.
+
 ## Features
 
 - **Ansible Infrastructure as Code (`ansible/`)**:
@@ -79,6 +81,8 @@ If setting up directly on the Windows host without Ansible:
 │       ├── 04-migrate-immich.yml                # Immich database restore & compose stack
 │       ├── 05-windows-wsl-service-uptime.yml    # WSL background service & uptime command
 │       └── 06-upgrade-immich.yml                # Automated rolling release upgrades
+├── docs/
+│   └── ARCHITECTURE.md        # Comprehensive system diagrams & network topology
 ├── KeepWSLAlive.ps1           # Task Scheduler registration script
 ├── Install-UptimeProfile.ps1  # Installs uptime profile to all PowerShell versions
 ├── profile.ps1                # Standalone profile snippet with uptime function
