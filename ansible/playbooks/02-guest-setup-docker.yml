@@ -74,6 +74,21 @@
         update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
       changed_when: false
 
+    - name: Ensure Docker systemd override directory exists
+      ansible.builtin.file:
+        path: /etc/systemd/system/docker.service.d
+        state: directory
+        mode: '0755'
+
+    - name: Configure Docker systemd drop-in to flush nftables before start
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/docker.service.d/override.conf
+        mode: '0644'
+        content: |
+          [Service]
+          ExecStartPre=/usr/sbin/nft flush ruleset
+      notify: Reload systemd
+
     - name: Enable and start Docker systemd service
       ansible.builtin.systemd:
         name: docker
@@ -88,3 +103,8 @@
     - name: Display Docker version
       ansible.builtin.debug:
         msg: "Docker is running: {{ docker_info.stdout_lines[0] | default('OK') }}"
+
+  handlers:
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
