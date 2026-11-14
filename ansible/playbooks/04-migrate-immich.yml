@@ -67,7 +67,7 @@
               volumes:
                 - {{ photos_dir }}:/usr/src/app/upload
                 - /mnt/d/PhotoSync:/usr/src/app/external/photosync:ro
-                - /mnt/d/kphong/Photos:/usr/src/app/external/kphong:ro
+                - /mnt/d/Photos/Archive:/usr/src/app/external/archive:ro
                 - /etc/localtime:/etc/localtime:ro
               env_file:
                 - .env

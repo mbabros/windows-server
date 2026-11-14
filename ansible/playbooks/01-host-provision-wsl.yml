@@ -6,8 +6,8 @@
   vars:
     distro_name: "{{ wsl_distro | default('Ubuntu-26.04') }}"
     ssh_port: "{{ wsl_ssh_port | default('2222') }}"
-    wsl_user: "aru"
-    ssh_public_key: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDa2vTe6TlGTnAI/8Uw8W6yPrvoe+NqPcY0M74ah4SgxuHDCo6eWrTLLM+pC0lmGA1MnDgS+dKA3JISPo81c5hFq8yIP7CMmyXloECf3U0D2ss2xRDqtNauqjHWTrYN6Q6iGaFLTahHzBl79dm41lNvhT2Urw6eBEJG/1h0E1Wj1cXm2WL7TVECkTtEFlC2XPD2dorAfJ7SoKRlGq6LH8BYp9fLTfSdCQMzxYgmiFFBIyMd+4/4w/FECtXP+H0yUlyEkbKKT6WyDpyXe+r6PM2mVy7Dt4WnLfHemDxzCRXNDh9vqh1BB0nvmSkxgkwy/p6GW6W8eKsxCYZG6iUHjxXrisay52xuerGrnhQtwGKyw+83ShLeHHi+1MabDHg6ZNKK9O3F4gtZ5CUwQqDvCk2JNQGqeCS8j24szFZ4AAf1dFIwIfHNhsQcRMojyBt1hXNUDTrfJcSv5nPiufukvWERRb23AwUmo4JoxutjR09TeIbPuxAq5943j3yqEOWznKQC2msNzX5ewAm2TXZt0kLGMdBFNwTa+q/S78QTQYOe+6Yv7+GM7ktLRNBEFIyfralfmrG6e2NFVN9+odQlX9d8j9Y8ZNU4lFkaVpQP+rGZxgRI6QGmhWeS6p1eo+vCAaMC6qV5MhVJ+dtJJQbJtDPB0MEq4BY5HbHh/cSetB7vYw== webtechy@gmail.com"
+    wsl_user: "{{ lookup('env', 'WSL_USER') | default('ubuntu', true) }}"
+    ssh_public_key: "{{ lookup('file', lookup('env', 'HOME') + '/.ssh/id_rsa.pub', errors='ignore') | default('ssh-rsa YOUR_SSH_PUBLIC_KEY user@example.com', true) }}"
 
   tasks:
     - name: Verify WSL distro is installed
@@ -71,6 +71,6 @@
 
     - name: Register KeepWSLAlive Scheduled Task for Ubuntu 26.04
       ansible.windows.win_shell: |
-        & "C:\Users\aru\windows-server\KeepWSLAlive.ps1" -Distro "{{ distro_name }}"
+        & "$env:USERPROFILE\wsl-docker-server\KeepWSLAlive.ps1" -Distro "{{ distro_name }}"
       register: keep_wsl_alive_out
       changed_when: false

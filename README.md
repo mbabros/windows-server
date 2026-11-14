@@ -2,7 +2,9 @@
 
 A complete Infrastructure as Code (IaC) and automation suite for running persistent Docker workloads, Coolify, and Immich on Windows via WSL2 (Ubuntu 26.04 LTS), with native background service management and server telemetry.
 
-> **Architecture Documentation**: See [**`docs/ARCHITECTURE.md`**](docs/ARCHITECTURE.md) for comprehensive component flowcharts, mirrored networking sequences, dual-tier storage strategy, and port allocation maps.
+> **Architecture Documentation**: See [**`docs/ARCHITECTURE.md`**](docs/ARCHITECTURE.md) for comprehensive component flowcharts, mirrored networking sequences, dual-tier storage strategy, and remote mobile client ingress architecture.
+
+---
 
 ## Features
 
@@ -22,8 +24,14 @@ A complete Infrastructure as Code (IaC) and automation suite for running persist
   - Compatible with both **PowerShell 7 (`pwsh`)** and **Windows PowerShell 5.1**.
   - Supports non-interactive SSH shells and interactive console sessions.
 - **WSL 2 Configuration Templates (`wsl-config/`)**:
-  - `.wslconfig`: Disables VM idle timeouts (`vmIdleTimeout=-1`), enables mirrored networking (`networkingMode=mirrored`), and DNS tunneling.
+  - `.wslconfig`: Disables VM idle timeouts (`vmIdleTimeout=-1`, `instanceIdleTimeout=-1`), enables mirrored networking (`networkingMode=mirrored`), and DNS tunneling.
   - `wsl.conf`: Enables `systemd=true` and sets default non-root user.
+- **Immich Photolab Suite & High-Capacity Storage (`ansible/playbooks/04-migrate-immich.yml`, `06-upgrade-immich.yml`)**:
+  - High-capacity host NTFS storage mount (`D:\ImmichPhotos`) combined with fast Linux ext4 NVMe storage for PostgreSQL ACID transactions.
+  - Support for read-only external libraries to index host photo libraries without data modification.
+- **Dual-URL Mobile Routing & Direct Edge Ingress**:
+  - Bypasses Cloudflare CDN 100 MB body size limits and 100-second timeouts by routing remote traffic through direct unproxied DNS to the edge reverse proxy.
+  - Full support for large 4K 60fps HDR and ProRes video uploads directly from mobile devices.
 
 ---
 
@@ -67,6 +75,26 @@ If setting up directly on the Windows host without Ansible:
 
 ---
 
+## Remote Ingress & Mobile App Setup (Dual-URL Routing)
+
+To ensure reliable backups of large 4K/60fps smartphone videos and ProRes clips without running into Cloudflare Free Tier request body limits (100 MB) or timeouts (100s):
+
+1. **DNS Ingress (Grey Cloud / Unproxied)**:
+   - Configure your public DNS record (`immich.yourdomain.com`) as an **unproxied A record** (`proxied: false`) pointing directly to your edge reverse proxy (e.g. Caddy on OCI).
+   - TLS is terminated directly at the edge reverse proxy using ACME / Let's Encrypt certificates (Cloudflare DNS-01 challenge).
+   - Traffic is forwarded securely over a private Tailscale WireGuard mesh directly to WSL2 port `2283`.
+
+2. **Immich Mobile App Configuration (iOS / Android)**:
+   Under **Settings → Server** in the Immich mobile application:
+   - **Server URL (External)**: `https://immich.yourdomain.com` (Used when on cellular or remote Wi-Fi).
+   - **Internal Server URL**: `http://192.168.x.x:2283` (Direct LAN Wi-Fi address).
+
+> **Why Dual URLs?** When your phone connects to your home Wi-Fi SSID, the Immich app automatically routes uploads directly across your local network at Gigabit LAN speed, bypassing the internet and consuming zero mobile data. When away from home, backups seamlessly switch to the direct edge reverse proxy without file upload caps.
+
+For complete architectural flowcharts and dataflows, refer to [**`docs/ARCHITECTURE.md#6-remote-ingress--mobile-client-architecture-dual-url-routing`**](docs/ARCHITECTURE.md#6-remote-ingress--mobile-client-architecture-dual-url-routing).
+
+---
+
 ## Repository Structure
 
 ```text
@@ -82,7 +110,7 @@ If setting up directly on the Windows host without Ansible:
 │       ├── 05-windows-wsl-service-uptime.yml    # WSL background service & uptime command
 │       └── 06-upgrade-immich.yml                # Automated rolling release upgrades
 ├── docs/
-│   └── ARCHITECTURE.md        # Comprehensive system diagrams & network topology
+│   └── ARCHITECTURE.md        # Comprehensive system diagrams, network topology & ingress guide
 ├── KeepWSLAlive.ps1           # Task Scheduler registration script
 ├── Install-UptimeProfile.ps1  # Installs uptime profile to all PowerShell versions
 ├── profile.ps1                # Standalone profile snippet with uptime function
