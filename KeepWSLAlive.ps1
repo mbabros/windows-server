@@ -23,31 +23,39 @@ $ErrorActionPreference = "Stop"
 
 # 1. Define the Action (runs zero-CPU sleep infinity inside WSL as root)
 $action = New-ScheduledTaskAction `
-    -Execute "wsl.exe" `
+    -Execute "C:\Windows\System32\wsl.exe" `
     -Argument "-d $Distro -u root --exec sleep infinity"
 
-# 2. Define the Triggers (run at system startup)
-$trigger = New-ScheduledTaskTrigger -AtStartup
+# 2. Define the Triggers (startup with delay + logon fallback)
+$triggerBoot = New-ScheduledTaskTrigger -AtStartup
+$triggerBoot.Delay = 'PT15S'
+$triggerLogon = New-ScheduledTaskTrigger -AtLogOn -User (whoami)
 
-# 3. Define the Settings (unlimited execution time, battery resilience)
+# 3. Define the Settings (unlimited execution time, auto-retry on failure, battery resilience)
 $settings = New-ScheduledTaskSettingsSet `
     -AllowStartIfOnBatteries `
     -DontStopIfGoingOnBatteries `
     -DontStopOnIdleEnd `
     -ExecutionTimeLimit (New-TimeSpan -Days 0) `
-    -MultipleInstances IgnoreNew
+    -MultipleInstances IgnoreNew `
+    -RestartCount 3 `
+    -RestartInterval (New-TimeSpan -Minutes 1) `
+    -StartWhenAvailable
 
-# 4. Define the Principal (runs as the current user without requiring interactive logon)
+# 4. Define the Principal (runs with highest elevation under S4U)
 $principal = New-ScheduledTaskPrincipal `
     -UserId (whoami) `
-    -LogonType S4U
+    -LogonType S4U `
+    -RunLevel Highest
 
 # 5. Register the Task
 try {
     Register-ScheduledTask `
         -TaskName $TaskName `
         -Action $action `
-        -Trigger $trigger `
+        -Trigger @($triggerBoot, $triggerLogon) `
+        -Settings $settings `
+        -Principal $principal `
         -Settings $settings `
         -Principal $principal `
         -Description "Runs at startup to ensure the $Distro WSL instance stays running permanently as a background service." `

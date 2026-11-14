@@ -28,29 +28,35 @@
         $ErrorActionPreference = "Stop"
 
         $action = New-ScheduledTaskAction `
-            -Execute "wsl.exe" `
+            -Execute "C:\Windows\System32\wsl.exe" `
             -Argument "-d {{ distro_name }} -u root --exec sleep infinity"
 
-        $trigger = New-ScheduledTaskTrigger -AtStartup
+        $triggerBoot = New-ScheduledTaskTrigger -AtStartup
+        $triggerBoot.Delay = 'PT15S'
+        $triggerLogon = New-ScheduledTaskTrigger -AtLogOn -User (whoami)
 
         $settings = New-ScheduledTaskSettingsSet `
             -AllowStartIfOnBatteries `
             -DontStopIfGoingOnBatteries `
             -DontStopOnIdleEnd `
             -ExecutionTimeLimit (New-TimeSpan -Days 0) `
-            -MultipleInstances IgnoreNew
+            -MultipleInstances IgnoreNew `
+            -RestartCount 3 `
+            -RestartInterval (New-TimeSpan -Minutes 1) `
+            -StartWhenAvailable
 
         $principal = New-ScheduledTaskPrincipal `
             -UserId (whoami) `
-            -LogonType S4U
+            -LogonType S4U `
+            -RunLevel Highest
 
         Register-ScheduledTask `
             -TaskName "{{ task_name }}" `
             -Action $action `
-            -Trigger $trigger `
+            -Trigger @($triggerBoot, $triggerLogon) `
             -Settings $settings `
             -Principal $principal `
-            -Description "Runs at startup to ensure the {{ distro_name }} WSL instance stays running permanently as a background service." `
+            -Description "Runs at startup and logon to ensure the {{ distro_name }} WSL instance stays running permanently as a background service with auto-retry." `
             -Force | Out-Null
 
         Stop-ScheduledTask -TaskName "{{ task_name }}" -ErrorAction SilentlyContinue
